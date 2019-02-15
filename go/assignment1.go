@@ -1,16 +1,19 @@
 package main
 
 import (
+	//component
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
+	//api
 	"github.com/gin-gonic/gin"
+
+	//horizon api
 	b "github.com/stellar/go/build"
 	"github.com/stellar/go/clients/horizon"
 )
-
 type coinmarketcap struct {
 	ID              string
 	Name            string
@@ -74,10 +77,9 @@ func getDataAndCompareCoin(c *gin.Context) { //assignemnt 1
 			})
 		}
 	}
-
 }
 
-func transferStellar(c *gin.Context) {
+func transferStellar(c *gin.Context) { //assignment 2
 	source_account := c.Param("source_account")
 	destination_account := c.Param("destination_account")
 	amount := c.Param("amount")
@@ -85,13 +87,13 @@ func transferStellar(c *gin.Context) {
         panic(err)
     }
 
-	baseFee := uint64(100) //change to XLM (Lumen)
-	tx, err := b.Transaction(
+	//baseFee := uint64(100) //change to XLM (Lumen)
+	tx, err := b.Transaction( //create a transaction
 		b.SourceAccount{AddressOrSeed: source_account},
 		b.TestNetwork,
 		b.AutoSequence{SequenceProvider: horizon.DefaultTestNetClient},
-		b.BaseFee{baseFee},
-		b.Payment(
+		//b.BaseFee{baseFee},
+		b.Payment( // create a payment
 			b.Destination{AddressOrSeed: destination_account},
 			b.NativeAmount{Amount: amount},
 		),
@@ -141,11 +143,63 @@ func transferStellar(c *gin.Context) {
 
 }
 
-/*func bonus(c *gin.Context) {
+func bonus(c *gin.Context) { // bonus
 	source_account := c.Param("source_account")
 	destination_account := c.Param("destination_account")
 	amount := c.Param("amount")
-}*/
+
+	//check exist account
+	if _, err := horizon.DefaultTestNetClient.LoadAccount(destination_account); err != nil {
+        panic(err)
+	}
+
+	//baseFee := uint64(100) //change to XLM (Lumen)
+	tx, err := b.Transaction( //create a transaction
+		b.SourceAccount{AddressOrSeed: source_account},
+		b.TestNetwork,
+		b.AutoSequence{SequenceProvider: horizon.DefaultTestNetClient},
+		//b.BaseFee{baseFee},
+		b.Payment( // create a payment
+			b.Destination{AddressOrSeed: destination_account},
+			b.CreditAmount{Code:"RYU",Issuer:source_account,Amount:amount},
+		),
+	)
+	//transaction signer with XDR
+	txe, err := tx.Sign(source_account)
+	if err != nil {
+		c.JSON(200, gin.H{
+			"error": "Cannot sign, maybe you are using Public Key",
+		})
+		panic(err)
+	}
+
+	//getting Transaction signature 
+	txeB64, err := txe.Base64()
+	if err != nil {
+		c.JSON(200, gin.H{
+			"error": "Cannot changes to Base64",
+		})
+		panic(err)
+	}
+	fmt.Printf("tx base64: %s", txeB64)
+
+	//submit transaction
+	resp, err := horizon.DefaultTestNetClient.SubmitTransaction(txeB64)
+	if err != nil {
+		c.JSON(200, gin.H{
+			"error": "Transaction failed",
+		})
+		panic(err)
+	}
+	c.JSON(200, gin.H{
+		"Congratulations!": "Transaction success",
+		"Hash": resp.Hash,
+		"Ledger": resp.Ledger,
+		"Result": resp.Result,
+		"Env": resp.Env,
+	})
+	fmt.Println("transaction posted in ledger:", resp.Ledger)
+}
 
 func getCoinData(url string, target interface{}) error {
 	client := &http.Client{}
@@ -164,11 +218,10 @@ func splitSlash(data rune) bool {
 }
 
 func main() {
-	fmt.Println("Hello World")
 	api := gin.Default()
 	api.GET("/api/comparecoin/:ticker_symbol_1/:ticker_symbol_2", getDataAndCompareCoin)
 	api.GET("/api/transferstellar/:source_account/:destination_account/:amount", transferStellar)
-	//api.GET("/api/bonus/:source_account/:destination_account/:amount", bonus)
+	api.GET("/api/bonus/:source_account/:destination_account/:amount", bonus)
 
 	api.Run(":5000")
 }
